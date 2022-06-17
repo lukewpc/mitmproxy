@@ -134,18 +134,36 @@ class PostmanCollection:
         self.items = items
 
 
+class PostmanConfig:
+    sort_headers: bool = False
+    lower_case_header_names: bool = False
+
+    def __init__(self, conf: str) -> None:
+        self.sort_headers = 's' in conf
+        self.lower_case_header_names = 'l' in conf
+
+
 class PostmanEncoder(json.JSONEncoder):
     def default(self, o):
         return o.__dict__
 
 
-def get_headers(request: http.Request) -> typing.Sequence[PostmanHeader]:
-    return [PostmanHeader(k, v) for (k, v) in request.headers.items(multi=True)]
+def get_headers(request: http.Request, config: PostmanConfig) -> typing.Sequence[PostmanHeader]:
+    headers: typing.Sequence[PostmanHeader] = [
+        PostmanHeader(
+            k.lower() if config.lower_case_header_names else k, v
+        )
+        for (k, v) in request.headers.items(multi=True)
+    ]
+    if config.sort_headers:
+        return sorted(headers, key=lambda header: header.key)
+    else:
+        return headers
 
 
-def postman(f: flow.Flow) -> PostmanItem:
+def postman(f: flow.Flow, config: PostmanConfig) -> PostmanItem:
     request = cleanup_request(f)
-    header = get_headers(request)
+    header = get_headers(request, config)
     url = PostmanUrl(request.url)
     body = PostmanBody(request.get_text(strict=True)) if request.content else None
 
@@ -154,14 +172,15 @@ def postman(f: flow.Flow) -> PostmanItem:
 
 
 class Postman:
+    
     @command.command("export.postman")
     def save(
-        self, flows: typing.Sequence[flow.Flow], path: mitmproxy.types.Path
+        self, flows: typing.Sequence[flow.Flow], path: mitmproxy.types.Path, config: str
     ) -> None:
         """
         Exports flows to a file as a postman collection.
         """
-        collection = PostmanCollection(path, [postman(flow) for flow in flows])
+        collection = PostmanCollection(path, [postman(flow, PostmanConfig(config)) for flow in flows])
         posJ = json.dumps(collection, indent=4, cls=PostmanEncoder)
         try:
             with open(path, "w") as fp:

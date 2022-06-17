@@ -58,7 +58,7 @@ def request_content_for_console(request: http.Request) -> str:
 def curl_command(f: flow.Flow) -> str:
     request = cleanup_request(f)
     request = pop_headers(request)
-    args = ["curl"]
+    args = ["curl -x localhost:8084 -k"]
 
     server_addr = f.server_conn.peername[0] if f.server_conn.peername else None
 
@@ -71,16 +71,17 @@ def curl_command(f: flow.Flow) -> str:
         if k.lower() == "accept-encoding":
             args.append("--compressed")
         else:
-            args += ["-H", f"{k}: {v}"]
+            args += ["-H " + f"'{k}: {v}'"]
 
     if request.method != "GET":
-        args += ["-X", request.method]
+        args += ["-X " + request.method]
+
+    if request.content:
+        args += [f"-d '{request_content_for_console(request)}'"]
 
     args.append(request.pretty_url)
 
-    if request.content:
-        args += ["-d", request_content_for_console(request)]
-    return ' '.join(shlex.quote(arg) for arg in args)
+    return '#!/bin/bash\n\n' + ' \\\n'.join(arg for arg in args)
 
 
 def httpie_command(f: flow.Flow) -> str:
